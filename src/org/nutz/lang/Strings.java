@@ -14,8 +14,127 @@ import org.nutz.lang.meta.Email;
  * @author wendal(wendal1985@gmail.com)
  * @author mawm(ming300@gmail.com)
  * @author bonyfish(mc02cxj@gmail.com)
+ * @author pw(pangwu86@gmail.com)
  */
-public abstract class Strings {
+public class Strings {
+
+    private Strings() {}
+
+    /**
+     * 是中文字符吗?
+     * 
+     * @param c
+     *            待判定字符
+     * @return 判断结果
+     */
+    public static boolean isChineseCharacter(char c) {
+        Character.UnicodeBlock ub = Character.UnicodeBlock.of(c);
+        if (ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS
+            || ub == Character.UnicodeBlock.CJK_COMPATIBILITY_IDEOGRAPHS
+            || ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_A
+            || ub == Character.UnicodeBlock.CJK_UNIFIED_IDEOGRAPHS_EXTENSION_B
+            || ub == Character.UnicodeBlock.CJK_SYMBOLS_AND_PUNCTUATION
+            || ub == Character.UnicodeBlock.HALFWIDTH_AND_FULLWIDTH_FORMS
+            || ub == Character.UnicodeBlock.GENERAL_PUNCTUATION) {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 判断字符是否为全角字符
+     * 
+     * @param c
+     *            字符
+     * @return 判断结果
+     */
+    public static boolean isFullWidthCharacter(char c) {
+        // 全角空格为12288，半角空格为32
+        // 其他字符半角(33-126)与全角(65281-65374)的对应关系是：均相差65248
+        // 全角空格 || 其他全角字符
+        if (c == 12288 || (c > 65280 && c < 65375)) {
+            return true;
+        }
+        // 中文全部是全角
+        if (isChineseCharacter(c)) {
+            return true;
+        }
+        // 日文判断
+        // 全角平假名 u3040 - u309F
+        // 全角片假名 u30A0 - u30FF
+        if (c >= '\u3040' && c <= '\u30FF') {
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 转换成半角字符
+     * 
+     * @param c
+     *            待转换字符
+     * @return 转换后的字符
+     */
+    public static char toHalfWidthCharacter(char c) {
+        if (c == 12288) {
+            return (char) 32;
+        } else if (c > 65280 && c < 65375) {
+            return (char) (c - 65248);
+        }
+        return c;
+    }
+
+    /**
+     * 转换为半角字符串
+     * 
+     * @param str
+     *            待转换字符串
+     * @return 转换后的字符串
+     */
+    public static String toHalfWidthString(CharSequence str) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < str.length(); i++) {
+            sb.append(toHalfWidthCharacter(str.charAt(i)));
+        }
+        return sb.toString();
+    }
+
+    /**
+     * 判断是否是全角字符串(所有字符都是全角)
+     * 
+     * @param str
+     *            被判断的字符串
+     * @return 判断结果
+     */
+    public static boolean isFullWidthString(CharSequence str) {
+        return charLength(str) == str.length() * 2;
+    }
+
+    /**
+     * 判断是否是半角字符串(所有字符都是半角)
+     * 
+     * @param str
+     *            被判断的字符串
+     * @return 判断结果
+     */
+    public static boolean isHalfWidthString(CharSequence str) {
+        return charLength(str) == str.length();
+    }
+
+    /**
+     * 计算字符串的字符长度(全角算2, 半角算1)
+     * 
+     * @param str
+     *            被计算的字符串
+     * @return 字符串的字符长度
+     */
+    public static int charLength(CharSequence str) {
+        int clength = 0;
+        for (int i = 0; i < str.length(); i++) {
+            clength += isFullWidthCharacter(str.charAt(i)) ? 2 : 1;
+        }
+        return clength;
+    }
 
     /**
      * 复制字符串
@@ -148,18 +267,22 @@ public abstract class Strings {
     }
 
     /**
+     * 如果此字符串为 null 或者为空串（""），则返回 true
+     * 
      * @param cs
      *            字符串
-     * @return 是不是为空字符串
+     * @return 如果此字符串为 null 或者为空，则返回 true
      */
     public static boolean isEmpty(CharSequence cs) {
         return null == cs || cs.length() == 0;
     }
 
     /**
+     * 如果此字符串为 null 或者全为空白字符，则返回 true
+     * 
      * @param cs
      *            字符串
-     * @return 是不是为空白字符串
+     * @return 如果此字符串为 null 或者全为空白字符，则返回 true
      */
     public static boolean isBlank(CharSequence cs) {
         if (null == cs)
@@ -173,17 +296,15 @@ public abstract class Strings {
     }
 
     /**
-     * 去掉字符串前后空白
+     * 去掉字符串前后空白字符。空白字符的定义由Character.isWhitespace来判断
      * 
      * @param cs
      *            字符串
-     * @return 新字符串
+     * @return 去掉了前后空白字符的新字符串
      */
     public static String trim(CharSequence cs) {
         if (null == cs)
             return null;
-        if (cs instanceof String)
-            return ((String) cs).trim();
         int length = cs.length();
         if (length == 0)
             return cs.toString();
@@ -398,13 +519,15 @@ public abstract class Strings {
     }
 
     /**
+     * 测试此字符串是否被指定的左字符和右字符所包裹；如果该字符串左右两边有空白的时候，会首先忽略这些空白
+     * 
      * @param cs
      *            字符串
      * @param lc
      *            左字符
      * @param rc
      *            右字符
-     * @return 字符串是被左字符和右字符包裹 -- 忽略空白
+     * @return 字符串是被左字符和右字符包裹
      */
     public static boolean isQuoteByIgnoreBlank(CharSequence cs, char lc, char rc) {
         if (null == cs)
@@ -429,6 +552,8 @@ public abstract class Strings {
     }
 
     /**
+     * 测试此字符串是否被指定的左字符和右字符所包裹
+     * 
      * @param cs
      *            字符串
      * @param lc
@@ -442,6 +567,23 @@ public abstract class Strings {
             return false;
         int length = cs.length();
         return length > 1 && cs.charAt(0) == lc && cs.charAt(length - 1) == rc;
+    }
+
+    /**
+     * 测试此字符串是否被指定的左字符串和右字符串所包裹
+     * 
+     * @param str
+     *            字符串
+     * @param l
+     *            左字符串
+     * @param r
+     *            右字符串
+     * @return 字符串是被左字符串和右字符串包裹
+     */
+    public static boolean isQuoteBy(String str, String l, String r) {
+        if (null == str && null != l && null != r)
+            return false;
+        return str.startsWith(l) && str.endsWith(r);
     }
 
     /**
@@ -477,44 +619,48 @@ public abstract class Strings {
     }
 
     /**
-     * 对obj进行toString()操作,如果为null返回""
+     * 对指定对象进行 toString 操作；如果该对象为 null ，则返回空串（""）
      * 
      * @param obj
-     * @return obj.toString()
+     *            指定的对象
+     * @return 对指定对象进行 toString 操作；如果该对象为 null ，则返回空串（""）
      */
     public static String sNull(Object obj) {
         return sNull(obj, "");
     }
 
     /**
-     * 对obj进行toString()操作,如果为null返回def中定义的值
+     * 对指定对象进行 toString 操作；如果该对象为 null ，则返回默认值
      * 
      * @param obj
+     *            指定的对象
      * @param def
-     *            如果obj==null返回的内容
-     * @return obj的toString()操作
+     *            默认值
+     * @return 对指定对象进行 toString 操作；如果该对象为 null ，则返回默认值
      */
     public static String sNull(Object obj, String def) {
         return obj != null ? obj.toString() : def;
     }
 
     /**
-     * 对obj进行toString()操作,如果为空串返回""
+     * 对指定对象进行 toString 操作；如果该对象为 null ，则返回空串（""）
      * 
      * @param obj
-     * @return obj.toString()
+     *            指定的对象
+     * @return 对指定对象进行 toString 操作；如果该对象为 null ，则返回空串（""）
      */
     public static String sBlank(Object obj) {
         return sBlank(obj, "");
     }
 
     /**
-     * 对obj进行toString()操作,如果为空串返回def中定义的值
+     * 对指定对象进行 toString 操作；如果该对象为 null 或者 toString 方法为空串（""），则返回默认值
      * 
      * @param obj
+     *            指定的对象
      * @param def
-     *            如果obj==null返回的内容
-     * @return obj的toString()操作
+     *            默认值
+     * @return 对指定对象进行 toString 操作；如果该对象为 null 或者 toString 方法为空串（""），则返回默认值
      */
     public static String sBlank(Object obj, String def) {
         if (null == obj)
@@ -715,13 +861,46 @@ public abstract class Strings {
         return sb.toString();
     }
 
-    public static byte[] getBytesUTF8(String cs) {
+    /**
+     * 使用 UTF-8 编码将字符串编码为 byte 序列，并将结果存储到新的 byte 数组
+     * 
+     * @param cs
+     *            字符串
+     * 
+     * @return UTF-8编码后的 byte 数组
+     */
+    public static byte[] getBytesUTF8(CharSequence cs) {
         try {
-            return cs.getBytes(Encoding.UTF8);
+            return cs.toString().getBytes(Encoding.UTF8);
         }
         catch (UnsupportedEncodingException e) {
             throw Lang.wrapThrow(e);
         }
+    }
+
+    // ####### 几个常用的color相关的字符串转换放这里 ########
+
+    /**
+     * 将数字转为十六进制字符串, 默认要使用2个字符(暂时没考虑负数)
+     * 
+     * @param n
+     *            数字
+     * @return 十六进制字符串
+     */
+    public static String num2hex(int n) {
+        String s = Integer.toHexString(n);
+        return n <= 15 ? "0" + s : s;
+    }
+
+    /**
+     * 十六进制字符串转换为数字
+     * 
+     * @param hex
+     *            十六进制字符串
+     * @return 十进制数字
+     */
+    public static int hex2num(String hex) {
+        return Integer.parseInt(hex, 16);
     }
 
 }

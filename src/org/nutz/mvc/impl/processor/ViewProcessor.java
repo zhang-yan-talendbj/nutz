@@ -12,6 +12,7 @@ import org.nutz.mvc.ActionInfo;
 import org.nutz.mvc.NutConfig;
 import org.nutz.mvc.View;
 import org.nutz.mvc.ViewMaker;
+import org.nutz.mvc.ViewMaker2;
 import org.nutz.mvc.view.ViewWrapper;
 import org.nutz.mvc.view.VoidView;
 
@@ -73,11 +74,16 @@ public class ViewProcessor extends AbstractProcessor {
         
         //需要特别提醒一下使用jsonView,但方法的返回值是String的!!
         if("json".equals(type) && String.class.equals(ai.getMethod().getReturnType())) {
-            log.warn("Not a good idea : Return String ,and using JsonView!! (Using @Ok(\"raw\") or return map/list/pojo)--> " + ai.getMethod());
+            log.warn("Not a good idea : Return String ,and using JsonView!! (Using @Ok(\"raw\") or return map/list/pojo)--> " + Lang.simpleMetodDesc(ai.getMethod()));
         }
         
         for (ViewMaker maker : ai.getViewMakers()) {
-            View view = maker.make(config.getIoc(), type, value);
+        	if (maker instanceof ViewMaker2) {
+        		View view = ((ViewMaker2)maker).make(config, ai, type, value);
+        		if (view != null)
+        			return view;
+        	}
+        	View view = maker.make(config.getIoc(), type, value);
             if (null != view)
                 return view;
         }

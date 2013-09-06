@@ -2,6 +2,7 @@ package org.nutz.dao.impl.sql.run;
 
 import static java.lang.String.format;
 
+import java.sql.CallableStatement;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
@@ -13,6 +14,7 @@ import org.nutz.dao.impl.DaoExecutor;
 import org.nutz.dao.jdbc.ValueAdaptor;
 import org.nutz.dao.pager.Pager;
 import org.nutz.dao.sql.DaoStatement;
+import org.nutz.dao.sql.SqlType;
 import org.nutz.dao.util.Daos;
 import org.nutz.lang.Lang;
 import org.nutz.log.Log;
@@ -52,12 +54,18 @@ public class NutDaoExecutor implements DaoExecutor {
             case RUN:
                 st.onAfter(conn, null);
                 break;
+            case CALL:
+            case EXEC:
+            	_runExec(conn, st);
+            	break;
             // 插入 & 删除 & 更新
             // case DELETE:
             // case UPDATE:
             // case INSERT:
             // 见鬼了，未知类型，也当作普通 SQL 运行吧，见 Issue#13
             default:
+                if (st.getSqlType() == SqlType.OTHER && log.isInfoEnabled())
+                    log.info("Can't indentify SQL type :   " + st);
                 paramMatrix = st.getParamMatrix();
                 // 木有参数，直接运行
                 if (null == paramMatrix || paramMatrix.length == 0) {
@@ -73,8 +81,12 @@ public class NutDaoExecutor implements DaoExecutor {
         }
         // If any SQLException happend, throw out the SQL string
         catch (SQLException e) {
-            if (log.isInfoEnabled())
-                log.debug("SQLException", e);
+            if (log.isDebugEnabled()) {
+            	log.debug("SQLException", e);
+            	SQLException nextException = e.getNextException();
+                if (e != null)
+                	log.debug("SQL NextException", nextException);
+            }
             throw new DaoException(format(    "!Nutz SQL Error: '%s'\nPreparedStatement: \n'%s'",
                                             st.toString(),
                                             st.toPreparedStatement()), e);
@@ -82,7 +94,67 @@ public class NutDaoExecutor implements DaoExecutor {
 
     }
 
-    private void _runSelect(Connection conn, DaoStatement st)
+    // 执行存储过程,简单实现
+    protected void _runExec(Connection conn, DaoStatement st) throws SQLException {
+		if (st.getContext().getPager() != null) {
+			throw Lang.makeThrow(DaoException.class, "NOT Pageable : " + st);
+		}
+		
+		// 打印调试信息
+		String sql = st.toPreparedStatement();
+        if (log.isDebugEnabled())
+            log.debug(sql);
+		
+		Object[][] paramMatrix = st.getParamMatrix();
+		
+		CallableStatement stmt = null;
+		ResultSet rs = null;
+		try {
+			stmt = conn.prepareCall(sql);
+			ValueAdaptor[] adaptors = st.getAdaptors();
+			// 创建语句并设置参数
+			if (paramMatrix != null && paramMatrix.length > 0) {
+				for (int i = 0; i < paramMatrix[0].length; i++) {
+			        adaptors[i].set((PreparedStatement) stmt,
+			                paramMatrix[0][i], i + 1);
+			    }
+			}
+			
+			stmt.execute();
+			
+			//先尝试读取第一个,并调用一次回调
+			rs = stmt.getResultSet();
+			try {
+				st.onAfter(conn, rs);
+			}
+			finally {
+				if (rs != null)
+					rs.close();
+			}
+			
+			while (true) {
+				if (stmt.getMoreResults()) {
+					rs = stmt.getResultSet();
+					try {
+						st.onAfter(conn, rs);
+					}
+					finally {
+						if (rs != null)
+							rs.close();
+					}
+				// NOT support for this yet.  by wendal
+				//} else if (stmt.getUpdateCount() > -1) {
+				//	st.onAfter(conn, null);
+				}
+				break;
+			}
+		}
+		finally {
+			stmt.close();
+		}
+	}
+
+	private void _runSelect(Connection conn, DaoStatement st)
             throws SQLException {
 
         Object[][] paramMatrix = st.getParamMatrix();
@@ -100,10 +172,9 @@ public class NutDaoExecutor implements DaoExecutor {
         }
         // -------------------------------------------------
         // 生成 Sql 语句
-            String sql = st.toPreparedStatement();
+        String sql = st.toPreparedStatement();
         // 打印调试信息
-            if (log.isDebugEnabled())
-                log.debug(sql);
+        
         ResultSet rs = null;
         Statement stat = null;
         try {
@@ -111,7 +182,8 @@ public class NutDaoExecutor implements DaoExecutor {
             // 木有参数，直接运行
             if (null == paramMatrix || paramMatrix.length == 0
                     || paramMatrix[0].length == 0) {
-
+                if (log.isDebugEnabled())
+                    log.debug(st);
                 stat = conn.createStatement(st.getContext()
                         .getResultSetType(), ResultSet.CONCUR_READ_ONLY);
                 if (lastRow > 0)
@@ -128,7 +200,8 @@ public class NutDaoExecutor implements DaoExecutor {
                     if (log.isWarnEnabled())
                         log.warnf("Drop last %d rows parameters for:\n%s",
                                 paramMatrix.length - 1, st);
-                } else if (log.isDebugEnabled()) {
+                } 
+                if (log.isDebugEnabled()) {
                     log.debug(st);
                 }
 
@@ -196,14 +269,18 @@ public class NutDaoExecutor implements DaoExecutor {
                 }
                 int[] counts = pstat.executeBatch();
 
-                pstat.close();
-                statIsClosed = true;
-
                 // 计算总共影响的行数
                 int sum = 0;
                 for (int i : counts)
-                    sum += i;
+                    if (i > 0)
+                        sum += i;
+                        
+                if (sum == 0)
+                    sum = pstat.getUpdateCount();
 
+                pstat.close();
+                statIsClosed = true;
+                
                 st.getContext().setUpdateCount(sum);
             }
         }

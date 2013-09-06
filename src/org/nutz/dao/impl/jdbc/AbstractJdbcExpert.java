@@ -11,12 +11,14 @@ import java.util.Map;
 import org.nutz.dao.Dao;
 import org.nutz.dao.DaoException;
 import org.nutz.dao.Sqls;
+import org.nutz.dao.TableName;
 import org.nutz.dao.entity.Entity;
 import org.nutz.dao.entity.EntityField;
 import org.nutz.dao.entity.EntityIndex;
 import org.nutz.dao.entity.LinkField;
 import org.nutz.dao.entity.MappingField;
 import org.nutz.dao.entity.annotation.ColType;
+import org.nutz.dao.entity.annotation.PK;
 import org.nutz.dao.impl.entity.field.ManyManyLinkField;
 import org.nutz.dao.impl.entity.macro.SqlFieldMacro;
 import org.nutz.dao.jdbc.JdbcExpert;
@@ -74,21 +76,25 @@ public abstract class AbstractJdbcExpert implements JdbcExpert {
             rsmd = rs.getMetaData();
             // 循环字段检查
             for (MappingField mf : en.getMappingFields()) {
-                int ci = Daos.getColumnIndex(rsmd, mf.getColumnName());
-                // 是否只读，如果人家已经是指明是只读了，那么就不要自作聪明得再从数据库里验证了
-                // if (!mf.isReadonly() && rsmd.isReadOnly(ci))
-                // mf.setAsReadonly();
-                // 是否非空
-                if (ResultSetMetaData.columnNoNulls == rsmd.isNullable(ci))
-                    mf.setAsNotNull();
-                // 枚举类型在数据库中的值
-                if (mf.getTypeMirror().isEnum()) {
-                    if (Daos.isIntLikeColumn(rsmd, ci)) {
-                        mf.setColumnType(ColType.INT);
-                    } else {
-                        mf.setColumnType(ColType.VARCHAR);
-                    }
-                }
+                try {
+					int ci = Daos.getColumnIndex(rsmd, mf.getColumnName());
+					// 是否只读，如果人家已经是指明是只读了，那么就不要自作聪明得再从数据库里验证了
+					// if (!mf.isReadonly() && rsmd.isReadOnly(ci))
+					// mf.setAsReadonly();
+					// 是否非空
+					if (ResultSetMetaData.columnNoNulls == rsmd.isNullable(ci))
+					    mf.setAsNotNull();
+					// 枚举类型在数据库中的值
+					if (mf.getTypeMirror().isEnum()) {
+					    if (Daos.isIntLikeColumn(rsmd, ci)) {
+					        mf.setColumnType(ColType.INT);
+					    } else {
+					        mf.setColumnType(ColType.VARCHAR);
+					    }
+					}
+				} catch (Exception e) {
+					// TODO 需要log一下不?
+				}
             }
         }
         catch (Exception e) {
@@ -259,7 +265,10 @@ public abstract class AbstractJdbcExpert implements JdbcExpert {
                 sb.append("Create UNIQUE Index ");
             else
                 sb.append("Create Index ");
-            sb.append(index.getName());
+            if (index.getName().contains("$"))
+            	sb.append(TableName.render(new CharSegment(index.getName())));
+            else
+            	sb.append(index.getName());
             sb.append(" ON ").append(en.getTableName()).append("(");
             for (EntityField field : index.getFields()) {
                 if (field instanceof MappingField) {
@@ -339,5 +348,22 @@ public abstract class AbstractJdbcExpert implements JdbcExpert {
         Pojo autoInfo = new SqlFieldMacro(idField, autoSql);
         autoInfo.setEntity(en);
         return autoInfo;
+    }
+
+    public boolean isSupportAutoIncrement() {
+        return true;
+    }
+    
+    public String makePksName(Entity<?> en) {
+    	String name = en.getType().getAnnotation(PK.class).name();
+    	if (Strings.isBlank(name)) {
+    		StringBuilder sb = new StringBuilder();
+    		for (MappingField mf : en.getPks()) {
+                sb.append("_").append(mf.getColumnName());
+            }
+    		sb.setLength(sb.length() - 1);
+    		return sb.toString();
+    	}
+    	return name;
     }
 }

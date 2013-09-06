@@ -11,13 +11,13 @@ import org.nutz.ioc.IocException;
 import org.nutz.ioc.IocLoader;
 import org.nutz.ioc.IocLoading;
 import org.nutz.ioc.IocMaking;
-import org.nutz.ioc.ObjectLoadException;
 import org.nutz.ioc.ObjectMaker;
 import org.nutz.ioc.ObjectProxy;
 import org.nutz.ioc.ValueProxyMaker;
 import org.nutz.ioc.annotation.InjectName;
 import org.nutz.ioc.aop.MirrorFactory;
 import org.nutz.ioc.aop.impl.DefaultMirrorFactory;
+import org.nutz.ioc.loader.annotation.IocBean;
 import org.nutz.ioc.loader.cached.CachedIocLoader;
 import org.nutz.ioc.loader.cached.CachedIocLoaderImpl;
 import org.nutz.ioc.meta.IocObject;
@@ -131,6 +131,9 @@ public class NutIoc implements Ioc2 {
         InjectName inm = type.getAnnotation(InjectName.class);
         if (null != inm && (!Strings.isBlank(inm.value())))
             return get(type, inm.value());
+        IocBean iocBean = type.getAnnotation(IocBean.class);
+        if (iocBean != null && (!Strings.isBlank(iocBean.name())))
+        	return get(type, iocBean.name());
         return get(type, Strings.lowerFirst(type.getSimpleName()));
     }
 
@@ -163,12 +166,12 @@ public class NutIoc implements Ioc2 {
                         // 读取对象定义
                         IocObject iobj = loader.load(createLoading(), name);
                         if (null == iobj)
-                            throw Lang.makeThrow("Undefined object '%s'", name);
+                            throw new IocException("Undefined object '%s'", name);
 
                         // 修正对象类型
                         if (null == iobj.getType())
                             if (null == type)
-                                throw Lang.makeThrow("NULL TYPE object '%s'", name);
+                                throw new IocException("NULL TYPE object '%s'", name);
                             else
                                 iobj.setType(type);
 
@@ -182,8 +185,11 @@ public class NutIoc implements Ioc2 {
                         op = maker.make(ing, iobj);
                     }
                     // 处理异常
-                    catch (ObjectLoadException e) {
-                        throw new IocException(e, "For object [%s] - type:[%s]", name, type);
+                    catch (IocException e) {
+                        throw e;
+                    }
+                    catch (Throwable e) {
+                        throw new IocException(Lang.unwrapThrow(e), "For object [%s] - type:[%s]", name, type);
                     }
                 }
             }

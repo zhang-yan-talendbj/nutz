@@ -59,6 +59,14 @@ public abstract class NutStatement implements DaoStatement {
     public boolean isAlter() {
         return SqlType.ALTER == sqlType;
     }
+    
+    public boolean isExec() {
+    	return SqlType.EXEC == sqlType;
+    }
+    
+    public boolean isCall() {
+    	return SqlType.CALL == sqlType;
+    }
 
     public boolean isOther() {
         return SqlType.OTHER == sqlType;
@@ -226,9 +234,9 @@ public abstract class NutStatement implements DaoStatement {
                 sb.append(Sqls.formatFieldValue(mtrx[0][i]));
             }
         }
-        if (i < ss.length)
-            sb.append(ss[i]);
-
+        for (; i < ss.length; i++) {
+        	sb.append(ss[i]);
+		}
         return sb.toString();
     }
 

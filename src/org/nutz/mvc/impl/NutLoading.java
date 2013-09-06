@@ -5,11 +5,13 @@ import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Properties;
 import java.util.Set;
 
 import org.nutz.Nutz;
 import org.nutz.ioc.Ioc;
 import org.nutz.ioc.Ioc2;
+import org.nutz.ioc.loader.annotation.IocBean;
 import org.nutz.json.Json;
 import org.nutz.json.JsonFormat;
 import org.nutz.lang.Encoding;
@@ -51,12 +53,16 @@ public class NutLoading implements Loading {
             log.infof("Nutz.Mvc[%s] is initializing ...", config.getAppName());
         }
         if (log.isDebugEnabled()) {
+        	Properties sys = System.getProperties();
             log.debug("Web Container Information:");
             log.debugf(" - Default Charset : %s", Encoding.defaultEncoding());
             log.debugf(" - Current . path  : %s", new File(".").getAbsolutePath());
-            log.debugf(" - Java Version    : %s", System.getProperties().get("java.version"));
-            log.debugf(" - File separator  : %s", System.getProperties().get("file.separator"));
-            log.debugf(" - Timezone        : %s", System.getProperties().get("user.timezone"));
+            log.debugf(" - Java Version    : %s", sys.get("java.version"));
+            log.debugf(" - File separator  : %s", sys.get("file.separator"));
+            log.debugf(" - Timezone        : %s", sys.get("user.timezone"));
+            log.debugf(" - OS              : %s %s", sys.get("os.name"), sys.get("os.arch"));
+            log.debugf(" - ServerInfo      : %s", config.getServletContext().getServerInfo());
+            log.debugf(" - ContextPath     : %s", config.getServletContext().getContextPath());
         }
         /*
          * 准备返回值
@@ -83,12 +89,12 @@ public class NutLoading implements Loading {
             /*
              * 检查 Ioc 容器并创建和保存它
              */
-            createIoc(config, mainModule);
+            Ioc ioc = createIoc(config, mainModule);
 
             /*
              * 组装UrlMapping
              */
-            mapping = evalUrlMapping(config, mainModule);
+            mapping = evalUrlMapping(config, mainModule, ioc);
 
             /*
              * 分析本地化字符串
@@ -118,7 +124,7 @@ public class NutLoading implements Loading {
 
     }
 
-    private UrlMapping evalUrlMapping(NutConfig config, Class<?> mainModule) throws Exception {
+    private UrlMapping evalUrlMapping(NutConfig config, Class<?> mainModule, Ioc ioc) throws Exception {
         /*
          * @ TODO 个人建议可以将这个方法所涉及的内容转换到Loadings类或相应的组装类中,
          * 以便将本类加以隔离,使本的职责仅限于MVC整体的初使化,而不再负责UrlMapping的加载
@@ -134,7 +140,7 @@ public class NutLoading implements Loading {
         /*
          * 创建视图工厂
          */
-        ViewMaker[] makers = createViewMakers(mainModule);
+        ViewMaker[] makers = createViewMakers(mainModule, ioc);
 
         /*
          * 创建动作链工厂
@@ -195,10 +201,11 @@ public class NutLoading implements Loading {
         // 构建一个上下文对象，方便子类获取更多的环境信息
         // 同时，所有 Filter 和 Adaptor 都可以用 ${app.root} 来填充自己
         Context context = Lang.context();
-        context.set("app.root", config.getAppRoot());
+        String appRoot = config.getAppRoot();
+        context.set("app.root", appRoot);
 
         if (log.isDebugEnabled()) {
-            log.debugf(">> app.root = %s", config.getAppRoot());
+            log.debugf(">> app.root = %s", appRoot);
         }
 
         // 载入环境变量
@@ -277,15 +284,19 @@ public class NutLoading implements Loading {
         }
     }
 
-    private ViewMaker[] createViewMakers(Class<?> mainModule) throws Exception {
+    private ViewMaker[] createViewMakers(Class<?> mainModule, Ioc ioc) throws Exception {
         Views vms = mainModule.getAnnotation(Views.class);
         ViewMaker[] makers;
         int i = 0;
         if (null != vms) {
             makers = new ViewMaker[vms.value().length + 1];
-            for (; i < vms.value().length; i++)
-                makers[i] = Mirror.me(vms.value()[i]).born();
-
+            for (; i < vms.value().length; i++) {
+            	if (vms.value()[i].getAnnotation(IocBean.class) != null && ioc != null) {
+            		makers[i] = ioc.get(vms.value()[i]);
+            	} else {
+            		makers[i] = Mirror.me(vms.value()[i]).born();
+            	}
+            }
         } else {
             makers = new ViewMaker[1];
         }
@@ -302,11 +313,11 @@ public class NutLoading implements Loading {
         return makers;
     }
 
-    private void createIoc(NutConfig config, Class<?> mainModule) throws Exception {
+    private Ioc createIoc(NutConfig config, Class<?> mainModule) throws Exception {
         IocBy ib = mainModule.getAnnotation(IocBy.class);
         if (null != ib) {
             if (log.isDebugEnabled())
-                log.debugf("@IocBy(%s)", ib.type().getName());
+                log.debugf("@IocBy(type=%s, args=%s)", ib.type().getName(), ib.args());
 
             Ioc ioc = Mirror.me(ib.type()).born().create(config, ib.args());
             // 如果是 Ioc2 的实现，增加新的 ValueMaker
@@ -315,9 +326,10 @@ public class NutLoading implements Loading {
             }
             // 保存 Ioc 对象
             Mvcs.setIoc(ioc);
-
+            return ioc;
         } else if (log.isInfoEnabled())
             log.info("!!!Your application without @IocBy supporting");
+        return null;
     }
 
     @SuppressWarnings({"all"})

@@ -6,7 +6,6 @@ import org.nutz.dao.impl.sql.ValueEscaper;
 import org.nutz.dao.impl.sql.callback.*;
 import org.nutz.dao.sql.Sql;
 import org.nutz.dao.sql.SqlCallback;
-import org.nutz.lang.Lang;
 import org.nutz.lang.Mirror;
 import org.nutz.lang.born.Borning;
 
@@ -61,7 +60,7 @@ public abstract class Sqls {
      * @see org.nutz.dao.sql.Sql
      */
     public static Sql create(String sql) {
-        return sqlBorning.born(Lang.array(sql));
+        return sqlBorning.born(sql);
     }
 
     /**
@@ -136,20 +135,31 @@ public abstract class Sqls {
     }
 
     /**
-     * 创建一个获取长整数的 Sql。
-     * <p>
-     * 这个函数除了执行 create(String)外，还会为这个 Sql 语句设置回调，用来获取长整数值。
-     * <p>
-     * <b style=color:red>注意：</b>你的 Sql 语句返回的 ResultSet 的第一列必须是数字
-     * 
-     * @param sql
-     *            Sql 语句
-     * @return Sql 对象
-     * 
-     * @see org.nutz.dao.sql.Sql
+     * @see #fetchInt(String)
      */
     public static Sql fetchLong(String sql) {
         return create(sql).setCallback(callback.longValue());
+    }
+
+    /**
+     * @see #fetchInt(String)
+     */
+    public static Sql fetchFloat(String sql) {
+        return create(sql).setCallback(callback.floatValue());
+    }
+
+    /**
+     * @see #fetchInt(String)
+     */
+    public static Sql fetchDouble(String sql) {
+        return create(sql).setCallback(callback.doubleValue());
+    }
+
+    /**
+     * @see #fetchInt(String)
+     */
+    public static Sql fetchTimestamp(String sql) {
+        return create(sql).setCallback(callback.timestamp());
     }
 
     /**
@@ -167,6 +177,10 @@ public abstract class Sqls {
      */
     public static Sql fetchString(String sql) {
         return create(sql).setCallback(callback.str());
+    }
+
+    public static Sql queryString(String sql) {
+        return create(sql).setCallback(callback.strs());
     }
 
     /**
@@ -236,6 +250,27 @@ public abstract class Sqls {
         }
 
         /**
+         * @return 从 ResultSet 获取一个浮点数的回调对象
+         */
+        public SqlCallback floatValue() {
+            return new FetchFloatCallback();
+        }
+
+        /**
+         * @return 从 ResultSet 获取一个双精度浮点数的回调对象
+         */
+        public SqlCallback doubleValue() {
+            return new FetchDoubleCallback();
+        }
+
+        /**
+         * @return 从 ResultSet 获取一个时间戳对象的回调对象
+         */
+        public SqlCallback timestamp() {
+            return new FetchTimestampCallback();
+        }
+
+        /**
          * @return 从 ResultSet 获取一个字符串的回调对象
          */
         public SqlCallback str() {
@@ -283,11 +318,11 @@ public abstract class Sqls {
         public SqlCallback records() {
             return new QueryRecordCallback();
         }
-        
+
         public SqlCallback bool() {
             return new FetchBooleanCallback();
         }
-        
+
         public SqlCallback bools() {
             return new QueryBooleanCallback();
         }
@@ -306,7 +341,8 @@ public abstract class Sqls {
         else if (Sqls.isNotNeedQuote(v.getClass()))
             return Sqls.escapeFieldValue(v.toString());
         else
-            return new StringBuilder("'").append(Sqls.escapeFieldValue(Castors.me().castToString(v))).append('\'');
+            return new StringBuilder("'").append(Sqls.escapeFieldValue(Castors.me().castToString(v)))
+                                         .append('\'');
     }
 
     /**
@@ -323,7 +359,7 @@ public abstract class Sqls {
             return Sqls.escapeSqlFieldValue(v.toString());
         else
             return new StringBuilder("'").append(Sqls.escapeSqlFieldValue(v.toString()))
-                                            .append('\'');
+                                         .append('\'');
     }
 
     /**

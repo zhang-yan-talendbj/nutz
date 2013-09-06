@@ -1,6 +1,14 @@
 package org.nutz.dao.jdbc;
 
+import java.io.ByteArrayInputStream;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.FileReader;
+import java.io.FileWriter;
+import java.io.FilterInputStream;
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
 import java.math.BigDecimal;
@@ -18,10 +26,12 @@ import java.util.Calendar;
 import javax.sql.DataSource;
 
 import org.nutz.castor.Castors;
+import org.nutz.dao.DaoException;
 import org.nutz.dao.entity.annotation.ColType;
 import org.nutz.dao.impl.entity.field.NutMappingField;
 import org.nutz.dao.impl.jdbc.BlobValueAdaptor;
 import org.nutz.dao.impl.jdbc.ClobValueAdaptor;
+import org.nutz.filepool.FilePool;
 import org.nutz.json.Json;
 import org.nutz.lang.Files;
 import org.nutz.lang.Lang;
@@ -84,6 +94,7 @@ public abstract class Jdbcs {
      * @see org.nutz.dao.jdbc.Jdbcs#getExpert(String, String)
      */
     public static JdbcExpert getExpert(DataSource ds) {
+    	log.info("Get Connection from DataSource for JdbcExpert");
         Connection conn = null;
         try {
             conn = Trans.getConnectionAuto(ds);
@@ -669,14 +680,51 @@ public abstract class Jdbcs {
         public static final ValueAdaptor asBinaryStream = new ValueAdaptor() {
 
             public Object get(ResultSet rs, String colName) throws SQLException {
-                return rs.getBinaryStream(colName);
+            	InputStream in = rs.getBinaryStream(colName);
+            	if (in == null) {
+            		return in;
+            	}
+            	try {
+					File f = File.createTempFile("nutzdao_blob", ".tmp");
+					Files.write(f, in);
+					in.close();
+					return new ReadOnceInputStream(f);
+				}
+				catch (IOException e) {
+					throw Lang.wrapThrow(e);
+				}
             }
 
             public void set(PreparedStatement stat, Object obj, int index) throws SQLException {
                 if (null == obj) {
                     stat.setNull(index, Types.BINARY);
                 } else {
-                    stat.setBinaryStream(index, (InputStream) obj);
+                	
+                	if (obj instanceof ByteArrayInputStream) {
+                		stat.setBinaryStream(index, (InputStream)obj, ((ByteArrayInputStream)obj).available());
+                	} else if (obj instanceof InputStream) {
+                		if (obj instanceof ReadOnceInputStream) {
+                			if (((ReadOnceInputStream)obj).readed) {
+                				throw new DaoException("");
+                			}
+                		}
+                        try {
+                            File f = Jdbcs.getFilePool().createFile(".dat");
+                            Streams.writeAndClose(new FileOutputStream(f), (InputStream)obj);
+                            stat.setBinaryStream(index, new FileInputStream(f), f.length());
+                        }
+                        catch (FileNotFoundException e) {
+                        	System.gc();
+                        	try {
+                                File f = Jdbcs.getFilePool().createFile(".dat");
+                                Streams.writeAndClose(new FileOutputStream(f), (InputStream)obj);
+                                stat.setBinaryStream(index, new FileInputStream(f), f.length());
+                            }
+                            catch (FileNotFoundException e2) {
+                            	throw Lang.impossible();
+                            }
+                        }
+                    }
                 }
             }
         };
@@ -691,7 +739,7 @@ public abstract class Jdbcs {
                 if (null == obj) {
                     stat.setNull(index, Types.BINARY);
                 } else {
-                    stat.setCharacterStream(index, (Reader) obj);
+                    setCharacterStream(index, obj, stat);
                 }
             }
         };
@@ -799,4 +847,59 @@ public abstract class Jdbcs {
         }
     }
 
+    public static FilePool getFilePool() {
+        return conf.getPool();
+    }
+    
+    public static void setCharacterStream(int index, Object obj, PreparedStatement stat) throws SQLException {
+        try {
+            File f = Jdbcs.getFilePool().createFile(".dat");
+            Streams.writeAndClose(new FileWriter(f), (Reader)obj);
+            stat.setCharacterStream(index, new FileReader(f), f.length());
+        }
+        catch (FileNotFoundException e) {
+            throw Lang.impossible();
+        }
+        catch (IOException e) {
+            throw Lang.wrapThrow(e);
+        }
+    }
+}
+
+class ReadOnceInputStream extends FilterInputStream {
+	
+	private File f;
+	
+	public boolean readed;
+
+	protected ReadOnceInputStream(File f) throws FileNotFoundException {
+		super(new FileInputStream(f));
+		this.f = f;
+	}
+	
+	public int read() throws IOException {
+		readed = true;
+		return super.read();
+	}
+	
+	public int read(byte[] b) throws IOException {
+		readed = true;
+		return super.read(b);
+	}
+	
+	public int read(byte[] b, int off, int len) throws IOException {
+		readed = true;
+		return super.read(b, off, len);
+	}
+	
+	public void close() throws IOException {
+		super.close();
+		f.delete();
+	}
+	
+	protected void finalize() throws Throwable {
+		f.delete();
+		super.finalize();
+	}
+	
 }

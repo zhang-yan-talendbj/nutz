@@ -7,22 +7,31 @@ import static org.junit.Assert.assertTrue;
 
 import java.io.File;
 import java.sql.Timestamp;
-import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Calendar;
-import java.util.Date;
 import java.util.List;
 
 import junit.framework.Assert;
 
 import org.junit.Test;
 import org.nutz.NutzEnum;
-import org.nutz.castor.castor.DateTimeCastor;
 import org.nutz.lang.Lang;
 import org.nutz.lang.meta.Email;
 
 public class CastorTest {
+
+    /**
+     * 参见 Issue #435
+     */
+    @Test
+    public void test_yyMMdd_to_Timestamp() {
+        Castors cts = Castors.me();
+        String str = "2013-04-17";
+        Timestamp t = cts.castTo(str, Timestamp.class);
+        String s0 = cts.castToString(t);
+        assertEquals("2013-04-17 00:00:00", s0);
+    }
 
     @Test
     public void test_null_to_byte_and_short() {
@@ -367,26 +376,6 @@ public class CastorTest {
 
     }
 
-    @Test
-    public void test_self_setting() {
-        Castors.me().setSetting(new MyCastorSetting());
-        Date date = new Date();
-        Timestamp timestamp = new Timestamp(System.currentTimeMillis());
-        assertEquals(    new SimpleDateFormat("yyyy/MM/dd HH:mm:ss").format(date),
-                        Castors.me().castToString(timestamp));
-
-        Castors.me().setSetting(new DefaultCastorSetting());
-
-    }
-
-    static class MyCastorSetting {
-        public static void setup(DateTimeCastor<Timestamp, String> c) {
-            c.setDateFormat(new SimpleDateFormat("yyyy/MM/dd"));
-            c.setTimeFormat(new SimpleDateFormat("HH:mm:ss"));
-            c.setDateTimeFormat(new SimpleDateFormat("yyyy/MM/dd HH:mm:ss"));
-        }
-    }
-
     private void test_date_equal(java.util.Date d1, java.util.Date d2) {
         Calendar c1 = Calendar.getInstance();
         c1.setTime(d1);
@@ -400,9 +389,9 @@ public class CastorTest {
         assertEquals(c1.get(Calendar.SECOND), c2.get(Calendar.SECOND));
     }
 
-    @Test
-    public void load_form_nowhere() {
-        Castors castors = Castors.create().setPaths(new ArrayList<Class<?>>(0));
-        castors.castTo(1, Long.class);
-    }
+    // @Test
+    // public void load_form_nowhere() {
+    // Castors castors = Castors.create().setPaths(new ArrayList<Class<?>>(0));
+    // castors.castTo(1, Long.class);
+    // }
 }

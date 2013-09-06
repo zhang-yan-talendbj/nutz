@@ -7,31 +7,39 @@ import java.util.Map.Entry;
 import java.util.regex.Pattern;
 
 import org.nutz.dao.DaoException;
+import org.nutz.filepool.FilePool;
 import org.nutz.filepool.NutFilePool;
+import org.nutz.filepool.SynchronizedFilePool;
 import org.nutz.lang.Mirror;
+import org.nutz.lang.util.Disks;
 import org.nutz.log.Log;
 import org.nutz.log.Logs;
 
 public class JdbcExpertConfigFile {
 
     private Map<String, Class<? extends JdbcExpert>> experts;
+    
     private Map<Pattern, Class<? extends JdbcExpert>> _experts; 
 
     private Map<String, Object> config;
 
-    private NutFilePool pool;
+    private FilePool pool;
     
     private static final Log log = Logs.get();
 
     JdbcExpertConfigFile init() {
         // 即使初始化失败,也继续执行
+    	String home = config.get("pool-home").toString();
         try {
-            String home = config.get("pool-home").toString();
+            home = Disks.normalize(home);
+            if (home == null)
+            	home = config.get("pool-home").toString();
             long max = ((Number) config.get("pool-max")).longValue();
             pool = new NutFilePool(home, max);
+            pool = new SynchronizedFilePool(pool);
         } catch (Throwable e) {
             if (log.isWarnEnabled())
-                log.warnf("NutDao FilePool create fail!! Blob and Clob Support is DISABLE!! Home="+config.get("pool-home"), e);
+                log.warnf("NutDao FilePool create fail!! Blob and Clob Support is DISABLE!! Home="+home, e);
         }
         return this;
     }
@@ -60,7 +68,7 @@ public class JdbcExpertConfigFile {
         return config;
     }
 
-    public NutFilePool getPool() {
+    public FilePool getPool() {
         if (pool == null) {
             if (log.isWarnEnabled())
                 log.warnf("NutDao FilePool create fail!! Blob and Clob Support is DISABLE!!");
@@ -69,6 +77,7 @@ public class JdbcExpertConfigFile {
         return pool;
     }
 
+    // 在 fromJson 的时候，会被调用
     public void setExperts(Map<String, Class<? extends JdbcExpert>> experts) {
         this.experts = experts;
         this._experts = new HashMap<Pattern, Class<? extends JdbcExpert>>();

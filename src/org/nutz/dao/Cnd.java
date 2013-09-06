@@ -4,11 +4,11 @@ import org.nutz.dao.entity.Entity;
 import org.nutz.dao.jdbc.ValueAdaptor;
 import org.nutz.dao.pager.Pager;
 import org.nutz.dao.sql.Criteria;
+import org.nutz.dao.sql.GroupBy;
 import org.nutz.dao.sql.OrderBy;
 import org.nutz.dao.sql.Pojo;
 import org.nutz.dao.util.cnd.SimpleCondition;
 import org.nutz.dao.util.cri.Exps;
-import org.nutz.dao.util.cri.OrderBySet;
 import org.nutz.dao.util.cri.SimpleCriteria;
 import org.nutz.dao.util.cri.SqlExpression;
 import org.nutz.dao.util.cri.SqlExpressionGroup;
@@ -46,7 +46,7 @@ import org.nutz.lang.segment.CharSegment;
  * 
  * @see org.nutz.dao.Condition
  */
-public class Cnd implements OrderBy, Criteria {
+public class Cnd implements OrderBy, Criteria, GroupBy {
 
     /*------------------------------------------------------------------*/
     public static Condition format(String format, Object... args) {
@@ -100,6 +100,10 @@ public class Cnd implements OrderBy, Criteria {
     Cnd() {
         cri = new SimpleCriteria();
     }
+    
+    public SimpleCriteria getCri() {
+		return cri;
+	}
 
     protected Cnd(SqlExpression exp) {
         this();
@@ -195,7 +199,17 @@ public class Cnd implements OrderBy, Criteria {
     public SqlExpressionGroup where() {
         return cri.where();
     }
-
+    
+    public GroupBy groupBy(String... names) {
+    	cri.groupBy(names);
+    	return this;
+    }
+    
+    public GroupBy having(Condition cnd) {
+    	cri.having(cnd);
+    	return this;
+    }
+    
     public OrderBy getOrderBy() {
         return cri.getOrderBy();
     }
@@ -215,28 +229,4 @@ public class Cnd implements OrderBy, Criteria {
         return this;
     }
 
-    /**
-     * 简单合并2个Cnd,以第一个Cnd的值为先
-     */
-    public static Cnd merge(Cnd first, Cnd second) {
-        Cnd cnd = new Cnd();
-        if (!first.where().isEmpty()) {
-            for (SqlExpression se : first.where().cloneExps())
-                first.where().and(se);
-        }
-        if (!second.where().isEmpty()) {
-            for (SqlExpression se : second.where().cloneExps())
-                second.where().and(se);
-        }
-        OrderBySet order = (OrderBySet) cnd.getOrderBy();
-        if (first.getOrderBy() != null)
-            order.getItems().addAll(((OrderBySet) first.getOrderBy()).getItems());
-        if (second.getOrderBy() != null)
-            order.getItems().addAll(((OrderBySet) second.getOrderBy()).getItems());
-        if (second.getPager() == null)
-            cnd.cri.setPager(first.getPager());
-        else
-            cnd.cri.setPager(second.getPager());
-        return cnd;
-    }
 }
